@@ -20,21 +20,25 @@ For tickets where the LLM's interpretation is defensible but the
 expected fixture value is subjective, the test accepts either
 the expected value OR a value in ACCEPTABLE_OVERRIDES for that case.
 
-Skip the suite cleanly if GROQ_API_KEY is missing.
+This suite makes live provider calls using the API key and provider configured
+in .env so it validates real LLM classifications against the fixture set.
 """
 import os
 import pytest
 from dotenv import load_dotenv
 
-from agents.orchestrator import classify_ticket
+import agents.orchestrator as orchestrator
 from schemas.classification import ClassificationResult
 from tests.test_fixtures import MOCK_TICKET_SUITE
 
 load_dotenv()
 
+PROVIDER = os.getenv("LLM_PROVIDER", "groq").lower()
+REQUIRED_KEY = "GEMINI_API_KEY" if PROVIDER == "gemini" else "GROQ_API_KEY"
+
 pytestmark = pytest.mark.skipif(
-    not os.getenv("GROQ_API_KEY"),
-    reason="GROQ_API_KEY not set in .env",
+    not os.getenv(REQUIRED_KEY),
+    reason=f"{REQUIRED_KEY} not set in .env",
 )
 
 
@@ -73,7 +77,8 @@ def _accepted(case, field, expected):
 def test_orchestrator_classification(case):
     expected = case["expected_classification"]
     overrides = ACCEPTABLE_OVERRIDES.get(case["ticket_id"], {})
-    result = classify_ticket(case["input_text"], metadata={})
+
+    result = orchestrator.classify_ticket(case["input_text"], metadata={})
 
     assert isinstance(result, ClassificationResult)
 

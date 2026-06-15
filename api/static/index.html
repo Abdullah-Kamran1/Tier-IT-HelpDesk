@@ -1,0 +1,304 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Web Support</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: Arial, sans-serif;
+        color: #1f2933;
+        background: #f4f6f8;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+      }
+
+      .shell {
+        min-height: 100vh;
+        display: grid;
+        grid-template-columns: minmax(220px, 280px) 1fr;
+      }
+
+      aside {
+        background: #243447;
+        color: #fff;
+        padding: 24px;
+      }
+
+      aside a {
+        color: #d7e7ff;
+      }
+
+      main {
+        padding: 28px;
+      }
+
+      .workspace {
+        max-width: 980px;
+      }
+
+      h1,
+      h2 {
+        margin: 0 0 12px;
+        letter-spacing: 0;
+      }
+
+      p {
+        margin: 0 0 16px;
+        color: #52606d;
+      }
+
+      .panel {
+        background: #fff;
+        border: 1px solid #d9e2ec;
+        border-radius: 8px;
+        padding: 20px;
+        margin-bottom: 20px;
+      }
+
+      label {
+        display: block;
+        font-weight: 700;
+        margin: 14px 0 6px;
+      }
+
+      input,
+      textarea {
+        width: 100%;
+        border: 1px solid #bcccdc;
+        border-radius: 6px;
+        padding: 10px 12px;
+        font: inherit;
+      }
+
+      textarea {
+        min-height: 150px;
+        resize: vertical;
+      }
+
+      .check-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin: 14px 0;
+        font-weight: 700;
+      }
+
+      .check-row input {
+        width: auto;
+      }
+
+      button {
+        border: 0;
+        border-radius: 6px;
+        background: #0f62fe;
+        color: #fff;
+        font: inherit;
+        font-weight: 700;
+        padding: 10px 14px;
+        cursor: pointer;
+      }
+
+      button:disabled {
+        background: #829ab1;
+        cursor: wait;
+      }
+
+      pre {
+        white-space: pre-wrap;
+        overflow: auto;
+        max-height: 360px;
+        padding: 12px;
+        border-radius: 6px;
+        background: #102a43;
+        color: #f0f4f8;
+      }
+
+      .error {
+        color: #b42318;
+      }
+
+      @media (max-width: 760px) {
+        .shell {
+          grid-template-columns: 1fr;
+        }
+
+        aside,
+        main {
+          padding: 18px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+
+    <script>
+      const { useState } = React;
+
+      function JsonPanel({ title, data, error }) {
+        if (!data && !error) return null;
+        return React.createElement(
+          "section",
+          { className: "panel" },
+          React.createElement("h2", null, title),
+          error
+            ? React.createElement("p", { className: "error" }, error)
+            : React.createElement("pre", null, JSON.stringify(data, null, 2))
+        );
+      }
+
+      function App() {
+        const [ticketStatus, setTicketStatus] = useState({ loading: false });
+        const [csvStatus, setCsvStatus] = useState({ loading: false });
+
+        async function submitTicket(event) {
+          event.preventDefault();
+          const form = new FormData(event.currentTarget);
+          setTicketStatus({ loading: true });
+
+          const payload = {
+            ticket_text: form.get("issue"),
+            metadata: {
+              channel: "web",
+              submitter_name: form.get("name"),
+              submitter_email: form.get("email"),
+              urgent: form.get("urgent") === "on",
+            },
+          };
+
+          try {
+            const response = await fetch("/ticket", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(payload),
+            });
+            const body = await response.json();
+            if (!response.ok) throw new Error(body.detail || "Ticket submission failed");
+            setTicketStatus({ loading: false, data: body });
+            event.currentTarget.reset();
+          } catch (error) {
+            setTicketStatus({ loading: false, error: error.message });
+          }
+        }
+
+        async function submitCsv(event) {
+          event.preventDefault();
+          const form = new FormData(event.currentTarget);
+          const file = form.get("file");
+          setCsvStatus({ loading: true });
+
+          try {
+            if (!file || !file.name) throw new Error("Choose a CSV file first");
+            const response = await fetch(`/ticket/bulk_csv?filename=${encodeURIComponent(file.name)}`, {
+              method: "POST",
+              headers: { "Content-Type": "text/csv" },
+              body: await file.text(),
+            });
+            const body = await response.json();
+            if (!response.ok) throw new Error(body.detail || "CSV import failed");
+            setCsvStatus({ loading: false, data: body });
+            event.currentTarget.reset();
+          } catch (error) {
+            setCsvStatus({ loading: false, error: error.message });
+          }
+        }
+
+        return React.createElement(
+          "div",
+          { className: "shell" },
+          React.createElement(
+            "aside",
+            null,
+            React.createElement("h1", null, "Web Support"),
+            React.createElement("p", null, "Submit a support request or import a CSV batch."),
+            React.createElement("a", { href: "/" }, "Back to API home")
+          ),
+          React.createElement(
+            "main",
+            null,
+            React.createElement(
+              "div",
+              { className: "workspace" },
+              React.createElement(
+                "section",
+                { className: "panel" },
+                React.createElement("h2", null, "New Ticket"),
+                React.createElement(
+                  "form",
+                  { onSubmit: submitTicket },
+                  React.createElement("label", { htmlFor: "name" }, "Name"),
+                  React.createElement("input", { id: "name", name: "name", autoComplete: "name" }),
+                  React.createElement("label", { htmlFor: "email" }, "Email"),
+                  React.createElement("input", {
+                    id: "email",
+                    name: "email",
+                    type: "email",
+                    autoComplete: "email",
+                  }),
+                  React.createElement("label", { htmlFor: "issue" }, "Issue description"),
+                  React.createElement("textarea", { id: "issue", name: "issue", required: true }),
+                  React.createElement(
+                    "label",
+                    { className: "check-row" },
+                    React.createElement("input", { name: "urgent", type: "checkbox" }),
+                    "Urgent"
+                  ),
+                  React.createElement(
+                    "button",
+                    { disabled: ticketStatus.loading },
+                    ticketStatus.loading ? "Submitting..." : "Submit ticket"
+                  )
+                )
+              ),
+              React.createElement(
+                "section",
+                { className: "panel" },
+                React.createElement("h2", null, "CSV Bulk Import"),
+                React.createElement("p", null, "Accepted issue columns include Subject, Issue, Description, and ticket_text."),
+                React.createElement(
+                  "form",
+                  { onSubmit: submitCsv },
+                  React.createElement("label", { htmlFor: "csv-file" }, "CSV file"),
+                  React.createElement("input", {
+                    id: "csv-file",
+                    name: "file",
+                    type: "file",
+                    accept: ".csv,text/csv",
+                    required: true,
+                  }),
+                  React.createElement(
+                    "button",
+                    { disabled: csvStatus.loading, style: { marginTop: "14px" } },
+                    csvStatus.loading ? "Importing..." : "Import CSV"
+                  )
+                )
+              ),
+              React.createElement(JsonPanel, {
+                title: "Ticket Response",
+                data: ticketStatus.data,
+                error: ticketStatus.error,
+              }),
+              React.createElement(JsonPanel, {
+                title: "CSV Import Report",
+                data: csvStatus.data,
+                error: csvStatus.error,
+              })
+            )
+          )
+        );
+      }
+
+      ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(App));
+    </script>
+  </body>
+</html>
