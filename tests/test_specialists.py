@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 import pytest
 
 from agents import comms_productivity, identity_access
@@ -22,6 +24,18 @@ def _classification(ticket_type: str, route_to: str, suspicious_flags=None):
     )
 
 
+def _handle_with_auth0(ticket_text, classification, metadata):
+    with (
+        patch("agents.identity_access.get_user_by_email") as mock_get,
+        patch("agents.identity_access.trigger_password_reset") as mock_reset,
+        patch("agents.identity_access.delete_mfa_enrollments") as mock_mfa,
+    ):
+        mock_get.return_value = [{"user_id": "auth0|123", "email": "user@example.com"}]
+        mock_reset.return_value = {"status": "reset_sent"}
+        mock_mfa.return_value = {"status": "mfa_reset", "deleted_factors": ["guardian"]}
+        return identity_access.handle(ticket_text, classification, metadata)
+
+
 @pytest.mark.parametrize(
     ("ticket_type", "text", "expected_tag"),
     [
@@ -32,7 +46,11 @@ def _classification(ticket_type: str, route_to: str, suspicious_flags=None):
     ],
 )
 def test_identity_access_returns_phase_2_package(ticket_type, text, expected_tag):
-    result = identity_access.handle(text, _classification(ticket_type, "identity_access"))
+    metadata = {"requester_email": "user@example.com"}
+    if ticket_type in ("password_reset", "mfa_reset"):
+        result = _handle_with_auth0(text, _classification(ticket_type, "identity_access"), metadata)
+    else:
+        result = identity_access.handle(text, _classification(ticket_type, "identity_access"), metadata)
     parsed = SpecialistResult(**result)
 
     assert parsed.verification_required
@@ -42,10 +60,18 @@ def test_identity_access_returns_phase_2_package(ticket_type, text, expected_tag
 
 
 def test_identity_access_suspicious_flags_require_human_review_before_actions():
-    result = identity_access.handle(
-        "Urgent, change my MFA number while I am traveling.",
-        _classification("mfa_reset", "identity_access", ["urgency_with_credential_request"]),
-    )
+    metadata = {"requester_email": "user@example.com"}
+    with (
+        patch("agents.identity_access.get_user_by_email") as mock_get,
+        patch("agents.identity_access.delete_mfa_enrollments") as mock_mfa,
+    ):
+        mock_get.return_value = [{"user_id": "auth0|123"}]
+        mock_mfa.return_value = {"status": "mfa_reset", "deleted_factors": ["guardian"]}
+        result = identity_access.handle(
+            "Urgent, change my MFA number while I am traveling.",
+            _classification("mfa_reset", "identity_access", ["urgency_with_credential_request"]),
+            metadata,
+        )
     parsed = SpecialistResult(**result)
 
     assert parsed.escalate is True

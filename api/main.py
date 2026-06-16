@@ -135,7 +135,12 @@ def _log_specialist_response(ticket_id: str, agent_name: str, response: dict) ->
         conn.close()
 
 
-def _dispatch_to_specialists(ticket_id: str, ticket_text: str, c: ClassificationResult) -> list[dict]:
+def _dispatch_to_specialists(
+    ticket_id: str,
+    ticket_text: str,
+    c: ClassificationResult,
+    metadata: dict | None = None,
+) -> list[dict]:
     routes = c.split_routes or [c.route_to]
     results: list[dict] = []
     for route in routes:
@@ -143,7 +148,7 @@ def _dispatch_to_specialists(ticket_id: str, ticket_text: str, c: Classification
         if handler is None:
             results.append({"route": route, "error": f"unknown specialist '{route}'"})
             continue
-        result = handler(ticket_text, c)
+        result = handler(ticket_text, c, metadata)
         _log_specialist_response(ticket_id, route, result)
         results.append({"route": route, "result": result})
     return results
@@ -281,7 +286,7 @@ async def process_ticket(ticket_text: str, metadata: Optional[dict] = None) -> d
     if classification.suspicious_flags:
         return queue_for_human_review(ticket_id, classification)
 
-    results = _dispatch_to_specialists(ticket_id, ticket_text, classification)
+    results = _dispatch_to_specialists(ticket_id, ticket_text, classification, metadata)
 
     return merge_and_respond(ticket_id, classification, results)
 
@@ -401,7 +406,7 @@ def approve_review(ticket_id: str, payload: ReviewDecisionIn = ReviewDecisionIn(
         classification = ClassificationResult(**raw_classification)
         _mark_review(ticket_id, "approved", payload.reviewer)
         _update_ticket_status(ticket_id, "in_progress")
-        results = _dispatch_to_specialists(ticket_id, ticket_text, classification)
+        results = _dispatch_to_specialists(ticket_id, ticket_text, classification, {})
         return merge_and_respond(ticket_id, classification, results)
     except KeyError:
         raise HTTPException(status_code=404, detail="pending review ticket not found")

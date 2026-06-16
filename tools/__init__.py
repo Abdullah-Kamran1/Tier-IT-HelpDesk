@@ -4,7 +4,7 @@ Phase 3 keeps these calls fake and deterministic. Phase 5 can replace the
 underlying functions with real API integrations without changing call sites.
 """
 
-from tools import active_directory, itsm, messaging, okta
+from tools import active_directory, auth0, itsm, messaging, okta
 
 
 TOOL_REGISTRY = {
@@ -14,6 +14,10 @@ TOOL_REGISTRY = {
     "active_directory.get_group_memberships": active_directory.get_group_memberships,
     "active_directory.add_user_to_group": active_directory.add_user_to_group,
     "active_directory.remove_user_from_group": active_directory.remove_user_from_group,
+    "auth0.get_user_by_email": auth0.get_user_by_email,
+    "auth0.trigger_password_reset": auth0.trigger_password_reset,
+    "auth0.block_user": auth0.block_user,
+    "auth0.delete_mfa_enrollments": auth0.delete_mfa_enrollments,
     "okta.get_user_factors": okta.get_user_factors,
     "okta.reset_mfa": okta.reset_mfa,
     "okta.start_mfa_enrollment": okta.start_mfa_enrollment,
