@@ -4,7 +4,7 @@ Phase 3 keeps these calls fake and deterministic. Phase 5 can replace the
 underlying functions with real API integrations without changing call sites.
 """
 
-from tools import active_directory, auth0, itsm, messaging, okta
+from tools import active_directory, auth0, email_service, itsm, messaging, okta
 
 
 TOOL_REGISTRY = {
@@ -33,6 +33,10 @@ TOOL_REGISTRY = {
     "messaging.send_user_message": messaging.send_user_message,
     "messaging.notify_manager": messaging.notify_manager,
     "messaging.notify_channel": messaging.notify_channel,
+    "email.send_helpdesk_email": email_service.send_helpdesk_email,
+    "email.send_mfa_enrollment_email": email_service.send_mfa_enrollment_email,
+    "email.send_password_reset_email": email_service.send_password_reset_email,
+    "email.send_mfa_reset_notification": email_service.send_mfa_reset_notification,
 }
 
 

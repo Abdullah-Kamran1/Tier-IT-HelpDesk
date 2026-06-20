@@ -29,6 +29,9 @@ def _handle_with_auth0(ticket_text, classification, metadata):
         patch("agents.identity_access.get_user_by_email") as mock_get,
         patch("agents.identity_access.trigger_password_reset") as mock_reset,
         patch("agents.identity_access.delete_mfa_enrollments") as mock_mfa,
+        patch("agents.identity_access.send_password_reset_email") as mock_email_pw,
+        patch("agents.identity_access.send_mfa_reset_notification") as mock_email_mfa,
+        patch("agents.identity_access.send_mfa_enrollment_email") as mock_email_enroll,
     ):
         mock_get.return_value = [{"user_id": "auth0|123", "email": "user@example.com"}]
         mock_reset.return_value = {"status": "reset_sent"}
@@ -64,6 +67,7 @@ def test_identity_access_suspicious_flags_require_human_review_before_actions():
     with (
         patch("agents.identity_access.get_user_by_email") as mock_get,
         patch("agents.identity_access.delete_mfa_enrollments") as mock_mfa,
+        patch("agents.identity_access.send_mfa_reset_notification") as mock_email,
     ):
         mock_get.return_value = [{"user_id": "auth0|123"}]
         mock_mfa.return_value = {"status": "mfa_reset", "deleted_factors": ["guardian"]}

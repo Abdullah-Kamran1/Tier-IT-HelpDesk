@@ -2,9 +2,7 @@ import os
 import re
 import json
 import time
-import datetime
 import hashlib
-import threading
 from typing import Optional
 # pyrefly: ignore [missing-import]
 from groq import Groq
@@ -141,19 +139,16 @@ if PROVIDER == "gemini":
     from google import genai
     # pyrefly: ignore [missing-import]
     from google.genai import types
-    gemini_client = genai.Client()
-    _cached_content_obj = None
-    _cache_expiry = 0.0
+    try:
+        gemini_client = genai.Client()
+    except Exception as e:
+        raise RuntimeError(f"[GEMINI] client initialization failed: {e}") from e
 else:
     DEFAULT_MODEL = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
-    groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
-
-
-# NOTE: a single global lock prevents the "two threads both miss an
-# expired cache and both call .create()" race. For multi-process or
-# distributed deployments, swap this for a Redis SETNX or an atomic
-# cache primitive — a process-local lock is not enough across workers.
-_cache_lock = threading.Lock()
+    try:
+        groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+    except Exception as e:
+        raise RuntimeError(f"[GROQ] client initialization failed: {e}") from e
 
 
 _KEY_ALIASES = {
@@ -264,10 +259,10 @@ def _normalize(data: dict) -> dict:
     return out
 
 
-def _call_with_retry(fn, *args, max_retries: int = 3, base_delay: float = 1.0, **kwargs):
+def _call_with_retry(fn, provider: str, *args, max_retries: int = 3, base_delay: float = 1.0, **kwargs):
     """Call fn with exponential backoff on any exception.
 
-    Re-raises the last exception if all attempts fail.
+    Re-raises the last exception wrapped with a [PROVIDER] prefix.
     Does NOT swallow ValueError raised by our own code (json parsing, etc.)
     — those should bubble up immediately so callers see real bugs.
     """
@@ -278,34 +273,12 @@ def _call_with_retry(fn, *args, max_retries: int = 3, base_delay: float = 1.0, *
         except ValueError:
             raise
         except Exception as exc:
-            last_exc = exc
+            last_exc = RuntimeError(f"[{provider}] {exc}")
             if attempt == max_retries:
                 break
             delay = base_delay * (2 ** attempt)
             time.sleep(delay)
     raise last_exc  # type: ignore[misc]
-
-
-def _get_or_create_gemini_cache():
-    """Handles explicit prompt caching lifecycle for Google AI Studio."""
-    global _cached_content_obj, _cache_expiry
-
-    with _cache_lock:
-        now = time.time()
-        if _cached_content_obj and now < (_cache_expiry - 300):
-            return _cached_content_obj
-
-        ttl_minutes = 60
-        cached_content = gemini_client.caches.create(
-            model=DEFAULT_MODEL,
-            config=types.CreateCachedContentConfig(
-                contents=[SYSTEM_PROMPT],
-                ttl=datetime.timedelta(minutes=ttl_minutes),
-            ),
-        )
-        _cached_content_obj = cached_content
-        _cache_expiry = now + (ttl_minutes * 60)
-        return _cached_content_obj
 
 
 def _call_groq(user_message: str) -> str:
@@ -324,13 +297,11 @@ def _call_groq(user_message: str) -> str:
 
 
 def _call_gemini(user_message: str) -> str:
-    """Executes call against Gemini utilizing explicit context caching."""
-    cached_ctx = _get_or_create_gemini_cache()
+    """Executes call against Gemini. System prompt is sent inline."""
     response = gemini_client.models.generate_content(
         model=DEFAULT_MODEL,
-        contents=user_message,
+        contents=f"{SYSTEM_PROMPT}\n\n{user_message}",
         config=types.GenerateContentConfig(
-            cached_content=cached_ctx.name,
             temperature=0.1,
             max_output_tokens=512,
             response_mime_type="application/json",
@@ -358,9 +329,9 @@ def classify_ticket(ticket_text: str, metadata: Optional[dict] = None) -> Classi
     user_message = f"Ticket:\n{ticket_text}\n\nMetadata:\n{json.dumps(metadata)}"
 
     if PROVIDER == "gemini":
-        raw = _call_with_retry(_call_gemini, user_message)
+        raw = _call_with_retry(_call_gemini, "GEMINI", user_message)
     else:
-        raw = _call_with_retry(_call_groq, user_message)
+        raw = _call_with_retry(_call_groq, "GROQ", user_message)
 
     raw_data = _parse_json(raw)
     data = _normalize(raw_data)

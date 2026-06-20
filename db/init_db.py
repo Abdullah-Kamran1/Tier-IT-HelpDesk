@@ -74,7 +74,10 @@ def get_connection():
             "DATABASE_URL is not set. Add it to your .env file, e.g.\n"
             "  DATABASE_URL=postgresql://user:password@localhost:5432/tier_helpdesk"
         )
-    return psycopg2.connect(db_url)
+    try:
+        return psycopg2.connect(db_url)
+    except Exception as e:
+        raise RuntimeError(f"[DATABASE] connect failed: {e}") from e
 
 
 def init_schema() -> None:

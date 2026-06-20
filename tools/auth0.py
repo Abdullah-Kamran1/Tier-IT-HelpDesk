@@ -28,11 +28,10 @@ class Auth0ToolKit:
         """Finds user records corresponding to an email address."""
         try:
             # SDK maps directly to: GET /api/v2/users-by-email
-            users = self.auth0.users_by_email.search_users_by_email(email=email)
+            users = self.auth0.users.list_users_by_email(email=email)
             return users
         except Exception as e:
-            print(f"Error fetching user by email: {e}")
-            raise
+            raise RuntimeError(f"[AUTH0] get_user_by_email failed: {e}") from e
 
     def trigger_password_reset(self, email: str) -> dict:
         """Sends an Auth0 change password verification email."""
@@ -43,8 +42,7 @@ class Auth0ToolKit:
             )
             return {"status": "reset_sent", "email": email}
         except Exception as e:
-            print(f"Error triggering password reset: {e}")
-            raise
+            raise RuntimeError(f"[AUTH0] trigger_password_reset failed: {e}") from e
 
     def block_user(self, user_id: str) -> dict:
         """Administratively blocks a user from logging in."""
@@ -53,8 +51,7 @@ class Auth0ToolKit:
             self.auth0.users.update(user_id, {"blocked": True})
             return {"status": "blocked", "user_id": user_id}
         except Exception as e:
-            print(f"Error blocking user account: {e}")
-            raise
+            raise RuntimeError(f"[AUTH0] block_user failed: {e}") from e
 
     def unlock_user(self, user_id: str) -> dict:
         """Administratively unblocks a user account profile."""
@@ -63,8 +60,7 @@ class Auth0ToolKit:
             self.auth0.users.update(user_id, {"blocked": False})
             return {"status": "unlocked", "user_id": user_id}
         except Exception as e:
-            print(f"Error unlocking user account: {e}")
-            raise
+            raise RuntimeError(f"[AUTH0] unlock_user failed: {e}") from e
 
     def delete_mfa_enrollments(self, user_id: str) -> dict:
         """
@@ -89,7 +85,7 @@ class Auth0ToolKit:
                     self.auth0.guardian.enrollments.delete(device_id)
                     deleted.append(device_type)
                 except Exception as inner_err:
-                    errors.append({"factor": device_type, "error": str(inner_err)})
+                    errors.append({"factor": device_type, "error": f"[AUTH0] {inner_err}"})
 
             result = {"status": "mfa_reset", "user_id": user_id, "deleted_factors": deleted}
             if errors:
@@ -97,8 +93,7 @@ class Auth0ToolKit:
             return result
 
         except Exception as e:
-            print(f"Error running global MFA cleanup sequence: {e}")
-            raise
+            raise RuntimeError(f"[AUTH0] delete_mfa_enrollments failed: {e}") from e
 
     def create_mfa_enrollment_ticket(
         self,
@@ -126,8 +121,7 @@ class Auth0ToolKit:
                 "ticket_id": ticket.ticket_id,
             }
         except Exception as e:
-            print(f"Error creating MFA enrollment ticket: {e}")
-            raise
+            raise RuntimeError(f"[AUTH0] create_mfa_enrollment_ticket failed: {e}") from e
 
 
 _toolkit = None

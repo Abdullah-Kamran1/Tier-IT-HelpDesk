@@ -5,6 +5,11 @@ from tools.auth0 import (
     get_user_by_email,
     trigger_password_reset,
 )
+from tools.email_service import (
+    send_mfa_enrollment_email,
+    send_mfa_reset_notification,
+    send_password_reset_email,
+)
 from schemas.classification import ClassificationResult
 from schemas.specialist import IdentityAccessResult
 
@@ -250,6 +255,7 @@ def handle(
                 result = _not_found_result(email, "password_reset")
             else:
                 trigger_password_reset(email)
+                send_password_reset_email(email)
                 result = _password_reset_result(email)
 
         elif classification.ticket_type == "mfa_reset":
@@ -261,6 +267,7 @@ def handle(
             else:
                 user_id = users[0]["user_id"]
                 delete_result = delete_mfa_enrollments(user_id)
+                send_mfa_reset_notification(email)
                 result = _mfa_reset_result(email, user_id, delete_result.get("deleted_factors", []))
 
         elif classification.ticket_type == "mfa_enrollment":
@@ -272,7 +279,10 @@ def handle(
             else:
                 user_id = users[0]["user_id"]
                 ticket = create_mfa_enrollment_ticket(user_id, email=email, send_mail=False)
-                result = _mfa_enrollment_result(email, ticket.get("ticket_url"))
+                ticket_url = ticket.get("ticket_url")
+                if ticket_url:
+                    send_mfa_enrollment_email(email, ticket_url)
+                result = _mfa_enrollment_result(email, ticket_url)
 
         elif classification.ticket_type == "vpn_issue":
             result = _vpn_result(email or "the requester")
