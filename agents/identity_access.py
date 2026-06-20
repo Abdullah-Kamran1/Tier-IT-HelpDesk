@@ -1,5 +1,6 @@
 """Identity & access specialist (password, MFA, VPN, access requests) — Auth0 backed."""
 from tools.auth0 import (
+    create_mfa_enrollment_ticket,
     delete_mfa_enrollments,
     get_user_by_email,
     trigger_password_reset,
@@ -92,34 +93,39 @@ def _mfa_reset_result(email: str, user_id: str, deleted_factors: list[str]) -> I
     )
 
 
-def _mfa_enrollment_result(email: str) -> IdentityAccessResult:
+def _mfa_enrollment_result(email: str, ticket_url: str | None = None) -> IdentityAccessResult:
+    message = (
+        "To set up MFA for your account:\n"
+        "1. Install an authenticator app (like Google Authenticator or Auth0 Guardian).\n"
+        "2. Click the enrollment link provided below to start setup.\n"
+        "3. Scan the QR code with your authenticator app.\n"
+        "4. Enter the verification code to confirm.\n"
+    )
+    if ticket_url:
+        message += f"\nEnrollment link: {ticket_url}\n"
+    message += "\nLet me know if you run into any issues."
+
     return IdentityAccessResult(
         troubleshooting_steps=[
             f"Confirmed the requester's identity for {email}.",
             "MFA enrollment requires user action on their device.",
         ],
-        user_message_draft=(
-            "To set up MFA for your account: "
-            "1. Install an authenticator app (like Google Authenticator or Auth0 Guardian). "
-            "2. Sign in to your account and follow the MFA setup prompts. "
-            "3. Scan the QR code with your authenticator app. "
-            "4. Enter the verification code to confirm. "
-            "Let me know if you run into any issues."
-        ),
+        user_message_draft=message,
         verification_required=[
             "Verify requester identity before providing any enrollment links.",
         ],
         actions_to_execute=[
-            f"Confirmed {email} exists in Auth0.",
-            "Provided MFA enrollment instructions.",
+            f"Looked up {email} in Auth0.",
+            "Created Guardian enrollment ticket.",
         ],
         kb_draft=_kb(
             "MFA enrollment guidance (Auth0)",
             ["User needs to set up MFA", "New device enrollment"],
             [
                 "Verify identity.",
-                "Provide Auth0 MFA enrollment instructions.",
-                "Confirm successful enrollment with a test sign-in.",
+                "Look up user in Auth0 by email.",
+                "Create Guardian enrollment ticket via Management API.",
+                "Provide ticket URL to user for self-enrollment.",
             ],
             ["identity_access", "mfa_enrollment", "auth0"],
         ),
@@ -258,7 +264,15 @@ def handle(
                 result = _mfa_reset_result(email, user_id, delete_result.get("deleted_factors", []))
 
         elif classification.ticket_type == "mfa_enrollment":
-            result = _mfa_enrollment_result(email or "the requester")
+            if not email:
+                return _not_found_result("unknown", "mfa_enrollment").model_dump()
+            users = get_user_by_email(email)
+            if not users:
+                result = _not_found_result(email, "mfa_enrollment")
+            else:
+                user_id = users[0]["user_id"]
+                ticket = create_mfa_enrollment_ticket(user_id, email=email, send_mail=False)
+                result = _mfa_enrollment_result(email, ticket.get("ticket_url"))
 
         elif classification.ticket_type == "vpn_issue":
             result = _vpn_result(email or "the requester")

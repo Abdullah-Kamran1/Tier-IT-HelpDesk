@@ -1,5 +1,6 @@
 amqp==5.3.1
 annotated-doc==0.0.4
+auth0-python==5.7.0
 annotated-types==0.7.0
 anyio==4.13.0
 billiard==4.2.4

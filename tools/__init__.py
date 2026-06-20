@@ -18,6 +18,7 @@ TOOL_REGISTRY = {
     "auth0.trigger_password_reset": auth0.trigger_password_reset,
     "auth0.block_user": auth0.block_user,
     "auth0.delete_mfa_enrollments": auth0.delete_mfa_enrollments,
+    "auth0.create_mfa_enrollment_ticket": auth0.create_mfa_enrollment_ticket,
     "okta.get_user_factors": okta.get_user_factors,
     "okta.reset_mfa": okta.reset_mfa,
     "okta.start_mfa_enrollment": okta.start_mfa_enrollment,

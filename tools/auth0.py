@@ -1,97 +1,176 @@
-"""Auth0 Management API tools for identity & access operations."""
+"""Auth0 Management API tools for identity & access operations using the official SDK."""
 import os
-
-import requests
-
-
+from typing import Optional
+from auth0.authentication import GetToken
+from auth0.management import ManagementClient
+# Load environment configuration variables
 AUTH0_DOMAIN = os.getenv("AUTH0_DOMAIN")
 AUTH0_CLIENT_ID = os.getenv("AUTH0_CLIENT_ID")
 AUTH0_CLIENT_SECRET = os.getenv("AUTH0_CLIENT_SECRET")
+AUTH0_CONNECTION = os.getenv("AUTH0_CONNECTION", "Username-Password-Authentication")
 
-_MGMT_TOKEN: str | None = None
-
-
-def _get_management_token() -> str:
-    global _MGMT_TOKEN
-    if _MGMT_TOKEN:
-        return _MGMT_TOKEN
-
-    r = requests.post(
-        f"https://{AUTH0_DOMAIN}/oauth/token",
-        json={
-            "client_id": AUTH0_CLIENT_ID,
-            "client_secret": AUTH0_CLIENT_SECRET,
-            "audience": f"https://{AUTH0_DOMAIN}/api/v2/",
-            "grant_type": "client_credentials",
-        },
-        timeout=10,
-    )
-    r.raise_for_status()
-    _MGMT_TOKEN = r.json()["access_token"]
-    return _MGMT_TOKEN
+auth_client = GetToken(domain=AUTH0_DOMAIN, client_id=AUTH0_CLIENT_ID, client_secret=AUTH0_CLIENT_SECRET)
+token_info = auth_client.client_credentials(f"https://{AUTH0_DOMAIN}/api/v2/")
+mgmt_token = token_info["access_token"]
 
 
-def _headers() -> dict:
-    return {
-        "Authorization": f"Bearer {_get_management_token()}",
-        "Content-Type": "application/json",
-    }
+class Auth0ToolKit:
+    def __init__(self):
+        """
+        Initializes the Management API wrapper.
+        By passing client_id and client_secret directly with token=None,
+        the SDK handles the OAuth2 Machine-to-Machine token generation,
+        caching, and auto-refresh mechanisms automatically.
+        """
+
+        self.auth0 = ManagementClient(
+            domain=AUTH0_DOMAIN,
+            client_id=AUTH0_CLIENT_ID,
+            client_secret=AUTH0_CLIENT_SECRET
+        )
+
+    def get_user_by_email(self, email: str) -> list:
+        """Finds user records corresponding to an email address."""
+        try:
+            # SDK maps directly to: GET /api/v2/users-by-email
+            users = self.auth0.users_by_email.search_users_by_email(email=email)
+            return users
+        except Exception as e:
+            print(f"Error fetching user by email: {e}")
+            raise
+
+    def trigger_password_reset(self, email: str) -> dict:
+        """Sends an Auth0 change password verification email."""
+        try:
+            self.auth0.tickets.change_password(
+                email=email,
+                client_id=AUTH0_CLIENT_ID,
+            )
+            return {"status": "reset_sent", "email": email}
+        except Exception as e:
+            print(f"Error triggering password reset: {e}")
+            raise
+
+    def block_user(self, user_id: str) -> dict:
+        """Administratively blocks a user from logging in."""
+        try:
+            # SDK maps directly to: PATCH /api/v2/users/{id}
+            self.auth0.users.update(user_id, {"blocked": True})
+            return {"status": "blocked", "user_id": user_id}
+        except Exception as e:
+            print(f"Error blocking user account: {e}")
+            raise
+
+    def unlock_user(self, user_id: str) -> dict:
+        """Administratively unblocks a user account profile."""
+        try:
+            # Reverses block states by setting blocked flag to False
+            self.auth0.users.update(user_id, {"blocked": False})
+            return {"status": "unlocked", "user_id": user_id}
+        except Exception as e:
+            print(f"Error unlocking user account: {e}")
+            raise
+
+    def delete_mfa_enrollments(self, user_id: str) -> dict:
+        """
+        Queries active multi-factor enrollments and deletes them efficiently
+        without guessing factor names or running loops unnecessarily.
+        """
+        deleted = []
+        errors = []
+        
+        try:
+            # 1. Ask Auth0 exactly what active MFA devices this specific user owns
+            enrollments = self.auth0.users.get_enrollments(user_id)
+            
+            if not enrollments:
+                return {"status": "mfa_reset", "user_id": user_id, "deleted_factors": [], "message": "No factors active."}
+
+            # 2. Delete ONLY the factors that are actually registered
+            for device in enrollments:
+                device_id = device.get("id")
+                device_type = device.get("type", "unknown")
+                try:
+                    self.auth0.guardian.enrollments.delete(device_id)
+                    deleted.append(device_type)
+                except Exception as inner_err:
+                    errors.append({"factor": device_type, "error": str(inner_err)})
+
+            result = {"status": "mfa_reset", "user_id": user_id, "deleted_factors": deleted}
+            if errors:
+                result["errors"] = errors
+            return result
+
+        except Exception as e:
+            print(f"Error running global MFA cleanup sequence: {e}")
+            raise
+
+    def create_mfa_enrollment_ticket(
+        self,
+        user_id: str,
+        email: str | None = None,
+        factor: str | None = None,
+        send_mail: bool = False,
+    ) -> dict:
+        """
+        Generates a guardian enrollment ticket so the user can set up MFA.
+        Returns the ticket URL that the user must visit to complete enrollment.
+        """
+        try:
+            kwargs = {"user_id": user_id, "send_mail": send_mail}
+            if email:
+                kwargs["email"] = email
+            if factor:
+                kwargs["factor"] = factor
+
+            ticket = self.auth0.guardian.enrollments.create_ticket(**kwargs)
+            return {
+                "status": "enrollment_ticket_created",
+                "user_id": user_id,
+                "ticket_url": ticket.ticket_url,
+                "ticket_id": ticket.ticket_id,
+            }
+        except Exception as e:
+            print(f"Error creating MFA enrollment ticket: {e}")
+            raise
+
+
+_toolkit = None
+
+
+def _get_toolkit() -> Auth0ToolKit:
+    global _toolkit
+    if _toolkit is None:
+        _toolkit = Auth0ToolKit()
+    return _toolkit
 
 
 def get_user_by_email(email: str) -> list:
-    r = requests.get(
-        f"https://{AUTH0_DOMAIN}/api/v2/users-by-email",
-        headers=_headers(),
-        params={"email": email},
-        timeout=10,
-    )
-    r.raise_for_status()
-    return r.json()
+    return _get_toolkit().get_user_by_email(email)
 
 
 def trigger_password_reset(email: str) -> dict:
-    r = requests.post(
-        f"https://{AUTH0_DOMAIN}/dbconnections/change_password",
-        json={
-            "client_id": AUTH0_CLIENT_ID,
-            "email": email,
-            "connection": os.getenv("AUTH0_CONNECTION", "Username-Password-Authentication"),
-        },
-        timeout=10,
-    )
-    r.raise_for_status()
-    return {"status": "reset_sent", "email": email}
+    return _get_toolkit().trigger_password_reset(email)
 
 
 def block_user(user_id: str) -> dict:
-    r = requests.patch(
-        f"https://{AUTH0_DOMAIN}/api/v2/users/{user_id}",
-        headers=_headers(),
-        json={"blocked": True},
-        timeout=10,
-    )
-    r.raise_for_status()
-    return {"status": "blocked", "user_id": user_id}
+    return _get_toolkit().block_user(user_id)
+
+
+def unlock_user(user_id: str) -> dict:
+    return _get_toolkit().unlock_user(user_id)
 
 
 def delete_mfa_enrollments(user_id: str) -> dict:
-    FACTORS = [
-        "duo", "google-authenticator", "guardian", "sms",
-        "email", "otp", "recovery-code", "push-notification",
-    ]
-    deleted = []
-    errors = []
-    for factor in FACTORS:
-        r = requests.delete(
-            f"https://{AUTH0_DOMAIN}/api/v2/users/{user_id}/multifactor/{factor}",
-            headers=_headers(),
-            timeout=10,
-        )
-        if r.status_code == 204:
-            deleted.append(factor)
-        elif r.status_code != 404:
-            errors.append({"factor": factor, "error": r.text})
-    result = {"status": "mfa_reset", "user_id": user_id, "deleted_factors": deleted}
-    if errors:
-        result["errors"] = errors
-    return result
+    return _get_toolkit().delete_mfa_enrollments(user_id)
+
+
+def create_mfa_enrollment_ticket(
+    user_id: str,
+    email: str | None = None,
+    factor: str | None = None,
+    send_mail: bool = False,
+) -> dict:
+    return _get_toolkit().create_mfa_enrollment_ticket(
+        user_id=user_id, email=email, factor=factor, send_mail=send_mail,
+    )
