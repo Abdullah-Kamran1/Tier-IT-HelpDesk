@@ -1,17 +1,12 @@
 """Auth0 Management API tools for identity & access operations using the official SDK."""
 import os
-from typing import Optional
-from auth0.authentication import GetToken
 from auth0.management import ManagementClient
+
 # Load environment configuration variables
 AUTH0_DOMAIN = os.getenv("AUTH0_DOMAIN")
 AUTH0_CLIENT_ID = os.getenv("AUTH0_CLIENT_ID")
 AUTH0_CLIENT_SECRET = os.getenv("AUTH0_CLIENT_SECRET")
 AUTH0_CONNECTION = os.getenv("AUTH0_CONNECTION", "Username-Password-Authentication")
-
-auth_client = GetToken(domain=AUTH0_DOMAIN, client_id=AUTH0_CLIENT_ID, client_secret=AUTH0_CLIENT_SECRET)
-token_info = auth_client.client_credentials(f"https://{AUTH0_DOMAIN}/api/v2/")
-mgmt_token = token_info["access_token"]
 
 
 class Auth0ToolKit:

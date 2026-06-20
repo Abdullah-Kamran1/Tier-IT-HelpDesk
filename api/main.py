@@ -274,7 +274,7 @@ def merge_and_respond(ticket_id: str, c: ClassificationResult, results: list[dic
 # Core dispatcher
 # ---------------------------------------------------------------------------
 
-async def process_ticket(ticket_text: str, metadata: Optional[dict] = None) -> dict:
+def process_ticket(ticket_text: str, metadata: Optional[dict] = None) -> dict:
     metadata = metadata or {}
 
     classification = classify_ticket(ticket_text, metadata)
@@ -356,9 +356,9 @@ def web_support_form():
 
 
 @app.post("/ticket")
-async def submit_ticket(payload: TicketIn):
+def submit_ticket(payload: TicketIn):
     try:
-        return await process_ticket(payload.ticket_text, payload.metadata)
+        return process_ticket(payload.ticket_text, payload.metadata)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     except Exception as exc:
