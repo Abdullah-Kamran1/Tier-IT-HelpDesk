@@ -64,36 +64,24 @@ class Auth0ToolKit:
 
     def delete_mfa_enrollments(self, user_id: str) -> dict:
         """
-        Queries active multi-factor enrollments and deletes them efficiently
-        without guessing factor names or running loops unnecessarily.
+        Deletes all registered MFA authentication methods for a user.
+        Forces the user to re-enroll MFA.
         """
-        deleted = []
-        errors = []
-        
         try:
-            # 1. Ask Auth0 exactly what active MFA devices this specific user owns
-            enrollments = self.auth0.users.get_enrollments(user_id)
-            
-            if not enrollments:
-                return {"status": "mfa_reset", "user_id": user_id, "deleted_factors": [], "message": "No factors active."}
+            self.auth0.users.authentication_methods.delete_all(
+                user_id
+            )
 
-            # 2. Delete ONLY the factors that are actually registered
-            for device in enrollments:
-                device_id = device.get("id")
-                device_type = device.get("type", "unknown")
-                try:
-                    self.auth0.guardian.enrollments.delete(device_id)
-                    deleted.append(device_type)
-                except Exception as inner_err:
-                    errors.append({"factor": device_type, "error": f"[AUTH0] {inner_err}"})
-
-            result = {"status": "mfa_reset", "user_id": user_id, "deleted_factors": deleted}
-            if errors:
-                result["errors"] = errors
-            return result
+            return {
+                "status": "mfa_reset",
+                "user_id": user_id,
+                "message": "All active authentication factors successfully cleared."
+            }
 
         except Exception as e:
-            raise RuntimeError(f"[AUTH0] delete_mfa_enrollments failed: {e}") from e
+            raise RuntimeError(
+                f"[AUTH0] delete_mfa_enrollments failed: {e}"
+            ) from e
 
     def create_mfa_enrollment_ticket(
         self,
@@ -113,7 +101,7 @@ class Auth0ToolKit:
             if factor:
                 kwargs["factor"] = factor
 
-            ticket = self.auth0.guardian.enrollments.create_ticket(**kwargs)
+            ticket = self.auth0.guardian_tickets.create(**kwargs)
             return {
                 "status": "enrollment_ticket_created",
                 "user_id": user_id,

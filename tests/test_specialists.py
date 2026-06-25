@@ -7,6 +7,10 @@ from schemas.classification import ClassificationResult
 from schemas.specialist import SpecialistResult
 
 
+def _fake_user(user_id="auth0|123", email="user@example.com"):
+    return type("FakeUser", (), {"user_id": user_id, "email": email})()
+
+
 def _classification(ticket_type: str, route_to: str, suspicious_flags=None):
     return ClassificationResult(
         ticket_type=ticket_type,
@@ -33,7 +37,7 @@ def _handle_with_auth0(ticket_text, classification, metadata):
         patch("agents.identity_access.send_mfa_reset_notification") as mock_email_mfa,
         patch("agents.identity_access.send_mfa_enrollment_email") as mock_email_enroll,
     ):
-        mock_get.return_value = [{"user_id": "auth0|123", "email": "user@example.com"}]
+        mock_get.return_value = [_fake_user()]
         mock_reset.return_value = {"status": "reset_sent"}
         mock_mfa.return_value = {"status": "mfa_reset", "deleted_factors": ["guardian"]}
         return identity_access.handle(ticket_text, classification, metadata)
@@ -69,7 +73,7 @@ def test_identity_access_suspicious_flags_require_human_review_before_actions():
         patch("agents.identity_access.delete_mfa_enrollments") as mock_mfa,
         patch("agents.identity_access.send_mfa_reset_notification") as mock_email,
     ):
-        mock_get.return_value = [{"user_id": "auth0|123"}]
+        mock_get.return_value = [_fake_user()]
         mock_mfa.return_value = {"status": "mfa_reset", "deleted_factors": ["guardian"]}
         result = identity_access.handle(
             "Urgent, change my MFA number while I am traveling.",

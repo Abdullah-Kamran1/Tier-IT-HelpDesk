@@ -265,7 +265,7 @@ def handle(
             if not users:
                 result = _not_found_result(email, "mfa_reset")
             else:
-                user_id = users[0]["user_id"]
+                user_id = users[0].user_id
                 delete_result = delete_mfa_enrollments(user_id)
                 send_mfa_reset_notification(email)
                 result = _mfa_reset_result(email, user_id, delete_result.get("deleted_factors", []))
@@ -277,7 +277,7 @@ def handle(
             if not users:
                 result = _not_found_result(email, "mfa_enrollment")
             else:
-                user_id = users[0]["user_id"]
+                user_id = users[0].user_id
                 ticket = create_mfa_enrollment_ticket(user_id, email=email, send_mail=False)
                 ticket_url = ticket.get("ticket_url")
                 if ticket_url:
