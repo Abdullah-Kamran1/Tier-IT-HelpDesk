@@ -1,6 +1,7 @@
-"""Auth0 Management API tools for identity & access operations using the official SDK."""
+"""Auth0 Management API + Authentication API tools for identity & access operations."""
 import os
 from auth0.management import ManagementClient
+from auth0.authentication import Database
 
 # Load environment configuration variables
 AUTH0_DOMAIN = os.getenv("AUTH0_DOMAIN")
@@ -23,6 +24,11 @@ class Auth0ToolKit:
             client_id=AUTH0_CLIENT_ID,
             client_secret=AUTH0_CLIENT_SECRET
         )
+        self.db = Database(
+            domain=AUTH0_DOMAIN,
+            client_id=AUTH0_CLIENT_ID,
+            client_secret=AUTH0_CLIENT_SECRET,
+        )
 
     def get_user_by_email(self, email: str) -> list:
         """Finds user records corresponding to an email address."""
@@ -34,13 +40,13 @@ class Auth0ToolKit:
             raise RuntimeError(f"[AUTH0] get_user_by_email failed: {e}") from e
 
     def trigger_password_reset(self, email: str) -> dict:
-        """Sends an Auth0 change password verification email."""
+        """Sends Autho's own password reset email via the Authentication API."""
         try:
-            self.auth0.tickets.change_password(
+            result = self.db.change_password(
                 email=email,
-                client_id=AUTH0_CLIENT_ID,
+                connection="Username-Password-Authentication"
             )
-            return {"status": "reset_sent", "email": email}
+            return {"status": "reset_email_sent", "email": email, "response": result}
         except Exception as e:
             raise RuntimeError(f"[AUTH0] trigger_password_reset failed: {e}") from e
 
@@ -111,6 +117,59 @@ class Auth0ToolKit:
         except Exception as e:
             raise RuntimeError(f"[AUTH0] create_mfa_enrollment_ticket failed: {e}") from e
 
+    def get_user_roles(self, user_id: str) -> list:
+        """List all Auth0 roles assigned to a user."""
+        try:
+            pager = self.auth0.users.roles.list(id=user_id)
+            return list(pager)
+        except Exception as e:
+            raise RuntimeError(f"[AUTH0] get_user_roles failed: {e}") from e
+
+    def assign_user_role(self, user_id: str, role_id: str) -> dict:
+        """Assign an Auth0 role to a user."""
+        try:
+            self.auth0.users.roles.assign(id=user_id, roles=[role_id])
+            return {"status": "assigned", "user_id": user_id, "role_id": role_id}
+        except Exception as e:
+            raise RuntimeError(f"[AUTH0] assign_user_role failed: {e}") from e
+
+    def remove_user_role(self, user_id: str, role_id: str) -> dict:
+        """Remove an Auth0 role from a user."""
+        try:
+            self.auth0.users.roles.delete(id=user_id, roles=[role_id])
+            return {"status": "removed", "user_id": user_id, "role_id": role_id}
+        except Exception as e:
+            raise RuntimeError(f"[AUTH0] remove_user_role failed: {e}") from e
+
+    def list_roles(self, name_filter: str | None = None) -> list:
+        """List Auth0 roles, optionally filtered by name."""
+        try:
+            kwargs = {}
+            if name_filter:
+                kwargs["name_filter"] = name_filter
+            pager = self.auth0.roles.list(**kwargs)
+            return list(pager)
+        except Exception as e:
+            raise RuntimeError(f"[AUTH0] list_roles failed: {e}") from e
+
+    def create_user(self, email: str, name: str, **kwargs) -> dict:
+        """Create a new Auth0 user account."""
+        try:
+            payload = {
+                "email": email,
+                "name": name,
+                "connection": AUTH0_CONNECTION,
+                **kwargs,
+            }
+            user = self.auth0.users.create(payload)
+            return {
+                "status": "created",
+                "user_id": user.user_id,
+                "email": user.email,
+            }
+        except Exception as e:
+            raise RuntimeError(f"[AUTH0] create_user failed: {e}") from e
+
 
 _toolkit = None
 
@@ -151,3 +210,23 @@ def create_mfa_enrollment_ticket(
     return _get_toolkit().create_mfa_enrollment_ticket(
         user_id=user_id, email=email, factor=factor, send_mail=send_mail,
     )
+
+
+def get_user_roles(user_id: str) -> list:
+    return _get_toolkit().get_user_roles(user_id)
+
+
+def assign_user_role(user_id: str, role_id: str) -> dict:
+    return _get_toolkit().assign_user_role(user_id, role_id)
+
+
+def remove_user_role(user_id: str, role_id: str) -> dict:
+    return _get_toolkit().remove_user_role(user_id, role_id)
+
+
+def list_roles(name_filter: str | None = None) -> list:
+    return _get_toolkit().list_roles(name_filter)
+
+
+def create_user(email: str, name: str, **kwargs) -> dict:
+    return _get_toolkit().create_user(email, name, **kwargs)

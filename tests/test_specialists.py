@@ -33,12 +33,11 @@ def _handle_with_auth0(ticket_text, classification, metadata):
         patch("agents.identity_access.get_user_by_email") as mock_get,
         patch("agents.identity_access.trigger_password_reset") as mock_reset,
         patch("agents.identity_access.delete_mfa_enrollments") as mock_mfa,
-        patch("agents.identity_access.send_password_reset_email") as mock_email_pw,
         patch("agents.identity_access.send_mfa_reset_notification") as mock_email_mfa,
         patch("agents.identity_access.send_mfa_enrollment_email") as mock_email_enroll,
     ):
         mock_get.return_value = [_fake_user()]
-        mock_reset.return_value = {"status": "reset_sent"}
+        mock_reset.return_value = {"status": "reset_email_sent"}
         mock_mfa.return_value = {"status": "mfa_reset", "deleted_factors": ["guardian"]}
         return identity_access.handle(ticket_text, classification, metadata)
 

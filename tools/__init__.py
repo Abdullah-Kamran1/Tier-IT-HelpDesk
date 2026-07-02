@@ -4,25 +4,20 @@ Phase 3 keeps these calls fake and deterministic. Phase 5 can replace the
 underlying functions with real API integrations without changing call sites.
 """
 
-from tools import active_directory, auth0, email_service, itsm, messaging, okta
+from tools import auth0, email_service, itsm, messaging
 
 
 TOOL_REGISTRY = {
-    "active_directory.get_user": active_directory.get_user,
-    "active_directory.reset_password": active_directory.reset_password,
-    "active_directory.unlock_account": active_directory.unlock_account,
-    "active_directory.get_group_memberships": active_directory.get_group_memberships,
-    "active_directory.add_user_to_group": active_directory.add_user_to_group,
-    "active_directory.remove_user_from_group": active_directory.remove_user_from_group,
     "auth0.get_user_by_email": auth0.get_user_by_email,
     "auth0.trigger_password_reset": auth0.trigger_password_reset,
     "auth0.block_user": auth0.block_user,
     "auth0.delete_mfa_enrollments": auth0.delete_mfa_enrollments,
     "auth0.create_mfa_enrollment_ticket": auth0.create_mfa_enrollment_ticket,
-    "okta.get_user_factors": okta.get_user_factors,
-    "okta.reset_mfa": okta.reset_mfa,
-    "okta.start_mfa_enrollment": okta.start_mfa_enrollment,
-    "okta.suspend_user": okta.suspend_user,
+    "auth0.get_user_roles": auth0.get_user_roles,
+    "auth0.assign_user_role": auth0.assign_user_role,
+    "auth0.remove_user_role": auth0.remove_user_role,
+    "auth0.list_roles": auth0.list_roles,
+    "auth0.create_user": auth0.create_user,
     "itsm.create_ticket": itsm.create_ticket,
     "itsm.add_comment": itsm.add_comment,
     "itsm.update_status": itsm.update_status,

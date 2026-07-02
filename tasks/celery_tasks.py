@@ -19,9 +19,9 @@ celery = Celery(
 )
 
 celery.conf.beat_schedule = {
-    "check-sla-breaches-every-5-minutes": {
+    "check-sla-breaches-every-hour": {
         "task": "tasks.celery_tasks.check_sla_breaches",
-        "schedule": 300.0,
+        "schedule": 3600.0,
     },
 }
 
@@ -204,7 +204,7 @@ def check_sla_breaches() -> dict:
                         """
                         UPDATE tickets
                         SET sla_breach = TRUE
-                        WHERE id = ANY(%s);
+                        WHERE id = ANY(%s::uuid[]);
                         """,
                         (ticket_ids,),
                     )

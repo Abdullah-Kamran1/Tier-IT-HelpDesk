@@ -8,7 +8,6 @@ from tools.auth0 import (
 from tools.email_service import (
     send_mfa_enrollment_email,
     send_mfa_reset_notification,
-    send_password_reset_email,
 )
 from schemas.classification import ClassificationResult
 from schemas.specialist import IdentityAccessResult
@@ -255,7 +254,6 @@ def handle(
                 result = _not_found_result(email, "password_reset")
             else:
                 trigger_password_reset(email)
-                send_password_reset_email(email)
                 result = _password_reset_result(email)
 
         elif classification.ticket_type == "mfa_reset":
