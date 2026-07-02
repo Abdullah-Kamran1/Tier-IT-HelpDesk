@@ -15,8 +15,10 @@ import tempfile
 from pathlib import Path
 from typing import Optional
 
+import requests
+
 # pyrefly: ignore [missing-import]
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Depends
 # pyrefly: ignore [missing-import]
 from fastapi.responses import HTMLResponse
 # pyrefly: ignore [missing-import]
@@ -33,6 +35,8 @@ from agents import (
 from schemas.classification import ClassificationResult
 from db.init_db import get_connection
 from tasks.celery_tasks import bulk_import_csv
+from api.auth import get_current_user, VerifiedUser
+from tools.auth0 import get_user_by_email
 
 
 app = FastAPI(
@@ -355,10 +359,59 @@ def web_support_form():
         raise HTTPException(status_code=404, detail="web form not found")
 
 
-@app.post("/ticket")
-def submit_ticket(payload: TicketIn):
+@app.get("/auth/test-token")
+def auth_test_token(email: str = ""):
+    """Get a test M2M access token for Swagger testing. `email` is optional — if provided, the user info is looked up so you can see the email that will be used."""
+    if not email:
+        return {"error": "email query parameter is required"}
+
     try:
-        return process_ticket(payload.ticket_text, payload.metadata)
+        resp = requests.post(
+            f"https://{os.getenv('AUTH0_DOMAIN')}/oauth/token",
+            json={
+                "client_id": os.getenv("AUTH0_CLIENT_ID"),
+                "client_secret": os.getenv("AUTH0_CLIENT_SECRET"),
+                "audience": os.getenv("AUTH0_AUDIENCE"),
+                "grant_type": "client_credentials",
+            },
+            timeout=10,
+        )
+        resp.raise_for_status()
+        token_data = resp.json()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"[AUTH0] token request failed: {e}")
+
+    user_info = {}
+    try:
+        users = get_user_by_email(email)
+        if users:
+            user_info = {"auth0_id": users[0].user_id, "email": email}
+        else:
+            user_info = {"email": email, "note": "no Auth0 user found for this email"}
+    except Exception:
+        user_info = {"email": email, "note": "lookup failed — check AUTH0_DOMAIN and credentials"}
+
+    return {
+        "access_token": token_data["access_token"],
+        "token_type": "Bearer",
+        "expires_in": token_data.get("expires_in", 86400),
+        "scope": token_data.get("scope", ""),
+        "user": user_info,
+        "how_to_use": "Copy access_token, click Authorize in Swagger, paste it, then call endpoints.",
+        "note_for_mutations": "M2M tokens have no email claim. The API uses requester_email from metadata for mutations (minimum security: you need a valid Auth0 app credential to get this token).",
+    }
+
+
+@app.post("/ticket")
+def submit_ticket(payload: TicketIn, user: VerifiedUser = Depends(get_current_user)):
+    try:
+        metadata = payload.metadata.copy()
+        if user.email:
+            metadata["requester_email"] = user.email
+        metadata["verified_by"] = user.auth0_id
+        metadata["verified_email"] = user.email
+        metadata["verified_roles"] = user.roles
+        return process_ticket(payload.ticket_text, metadata)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     except Exception as exc:
